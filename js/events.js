@@ -1,0 +1,258 @@
+// 성장기 이벤트 카드
+// cond(s): 나올 수 있는 조건, once: 한 판에 한 번만, w: 나올 가능성(가중치)
+// 선택지 e: st(능력치) life(삶의 지표) friend(우정) flag discover(직업 도감 등록) energy(다음 학기 에너지)
+//          dream(꿈 주 능력치 보너스) action(특별 동작) dice(주사위 판정)
+// 문장 속 {friend} {friendDream} {dream} {name} 은 게임이 바꿔 넣어요.
+
+const EVENTS = [
+  { id: 'codingClub', icon: '💻', title: '학교에 코딩 동아리가 생겼어요!', w: 3, once: true,
+    cond: s => s.age >= 9 && s.age <= 15,
+    choices: [
+      { t: '들어간다', e: { st: { inquiry: 5 }, life: { happy: -1 } }, msg: '코딩으로 작은 게임을 만들어 봤어요.' },
+      { t: '친구들과 축구하는 시간이 더 좋아', e: { st: { body: 3 }, life: { happy: 3 } }, msg: '운동장에서 실컷 뛰었어요.' },
+      { t: '동아리를 직접 만들어 본다', req: s => s.stats.lead >= 30, reqText: '리더십 30 이상', e: { st: { lead: 5, inquiry: 3 } }, msg: '내가 만든 동아리에 친구들이 모였어요!' },
+    ] },
+  { id: 'mathHard', icon: '➗', title: '수학이 갑자기 어려워졌어요', w: 3,
+    cond: s => s.age >= 10,
+    choices: [
+      { t: '선생님께 질문한다', e: { st: { inquiry: 3 }, life: { social: 2 } }, msg: '질문하니 금방 이해됐어요.' },
+      { t: '혼자 끝까지 풀어 본다', e: { st: { detail: 4 }, life: { happy: -2 } }, msg: '오래 걸렸지만 결국 풀었어요.' },
+      { t: '오늘은 쉬고 내일 다시 한다', e: { life: { health: 2, happy: 1 } }, msg: '푹 쉬고 나니 머리가 맑아졌어요.' },
+    ] },
+  { id: 'grandmaGarden', icon: '👵', title: '옆집 할머니가 텃밭을 같이 가꾸자고 하세요', w: 4, once: true,
+    cond: s => s.region === 'farm' && s.age <= 13,
+    choices: [
+      { t: '같이 한다', e: { st: { body: 4, care: 3 }, discover: 'smartfarm' }, msg: '할머니께 요즘은 스마트팜도 있다는 이야기를 들었어요.' },
+      { t: '정중히 거절한다', e: {}, msg: '다음에 돕겠다고 말씀드렸어요.' },
+    ] },
+  { id: 'seaFarm', icon: '🐟', title: '바닷가 양식장을 견학할 기회가 생겼어요', w: 4, once: true,
+    cond: s => s.region === 'sea' && s.age <= 14,
+    choices: [
+      { t: '견학 간다', e: { st: { inquiry: 3, body: 2 }, discover: 'aqua' }, msg: '물고기를 기르는 기술자 분을 만났어요.' },
+      { t: '바다에서 수영한다', e: { st: { body: 3 }, life: { happy: 3 } }, msg: '바닷물이 시원했어요.' },
+    ] },
+  { id: 'forest', icon: '🌲', title: '마을 숲 체험 프로그램이 열렸어요', w: 4, once: true,
+    cond: s => s.region === 'mountain' && s.age <= 14,
+    choices: [
+      { t: '참가한다', e: { st: { care: 2, body: 2 }, life: { health: 3 }, discover: 'forest' }, msg: '숲에서 사람들을 돕는 산림치유사를 알게 됐어요.' },
+      { t: '집에서 쉰다', e: { life: { health: 2 } }, msg: '조용히 쉬었어요.' },
+    ] },
+  { id: 'museum', icon: '🏛️', title: '과학관에서 특별 전시가 열려요', w: 4, once: true,
+    cond: s => s.region === 'city' && s.age <= 14,
+    choices: [
+      { t: '로봇과 AI 전시를 본다', e: { st: { inquiry: 3, creative: 2 }, discover: 'ai' }, msg: '말하는 로봇을 직접 만나 봤어요.' },
+      { t: '공룡 화석 전시를 본다', e: { st: { inquiry: 3 }, discover: 'biologist' }, msg: '화석을 연구하는 과학자를 알게 됐어요.' },
+    ] },
+  { id: 'multiLang', icon: '🌏', title: '외갓집 식구들이 한국에 놀러 왔어요', w: 5, once: true,
+    cond: s => s.family === 'multi',
+    choices: [
+      { t: '두 나라 말로 통역을 도와 드린다', e: { st: { lead: 3, care: 2 }, life: { social: 3 }, discover: 'translator', flag: 'bilingual' }, msg: '두 나라 말을 할 수 있다는 게 멋진 재능이라는 걸 알았어요.' },
+      { t: '함께 맛있는 음식을 만든다', e: { st: { creative: 3 }, life: { happy: 4 } }, msg: '두 나라 음식이 한 상에 차려졌어요.' },
+    ] },
+  { id: 'jobDay', icon: '🎫', title: '직업 체험의 날이에요!', w: 4, max: 3,
+    cond: s => s.age >= 9 && s.age <= 17,
+    choices: [{ t: '어떤 직업을 체험할지 고른다', e: {}, action: 'jobExp' }] },
+  // 이어지는 이야기 1: 단짝 → 같은 동아리 → 전학 → 다시 만남
+  { id: 'bestFriend', icon: '🤞', title: '{friend}와 단짝이 되었어요', w: 5, once: true,
+    cond: s => s.age <= 11,
+    choices: [
+      { t: '매일 같이 논다', e: { friend: 15, life: { happy: 3, social: 2 }, action: 'setBf' }, msg: '{friend}와 비밀 약속을 만들었어요.' },
+      { t: '{friend}가 좋아하는 걸 같이 해 본다', e: { friend: 12, st: { care: 2 }, action: 'setBf' }, msg: '{friend} 덕분에 새로운 걸 알게 됐어요.' },
+    ] },
+  { id: 'bfClub', icon: '🎒', title: '단짝 {friend}가 같은 동아리에 들자고 해요', w: 6, once: true, useBf: true,
+    cond: s => s.bf != null && s.age >= 10 && s.age <= 13,
+    choices: [
+      { t: '{friend}가 고른 {friendDream} 관련 동아리에 함께 든다', e: { friend: 8, action: 'discoverFriendDream', life: { happy: 2 } }, msg: '{friend}와 함께 새로운 분야를 배웠어요.' },
+      { t: '내가 좋아하는 동아리를 함께 하자고 설득한다', e: { friend: 4, st: { lead: 3 } }, msg: '{friend}가 내 제안을 받아 줬어요.' },
+      { t: '각자 좋아하는 동아리에 든다', e: { st: { detail: 1 }, friend: -2 }, msg: '서로의 선택을 존중하기로 했어요.' },
+    ] },
+  { id: 'reunion', icon: '📮', title: '전학 간 {friend}에게서 편지가 왔어요!', w: 8, once: true, useMoved: true,
+    cond: s => s.flags.letter && s.age >= 15,
+    choices: [
+      { t: '주말에 만나러 간다', e: { friend: 15, life: { happy: 6, social: 3 }, flag: 'reunion' }, msg: '오랜만에 만난 {friend}는 {friendDream}의 꿈을 키우고 있었어요.' },
+      { t: '답장을 길게 쓴다', e: { friend: 10, st: { creative: 2 }, flag: 'reunion' }, msg: '편지로 그동안의 이야기를 나눴어요.' },
+    ] },
+  { id: 'fight', icon: '😣', title: '{friend}와 다퉜어요', w: 3,
+    cond: s => s.age >= 9,
+    choices: [
+      { t: '먼저 사과한다', e: { friend: 8, st: { care: 2 }, life: { social: 2 }, flag: 'fightOk' }, msg: '먼저 말을 거니 {friend}도 미안하다고 했어요.' },
+      { t: '시간이 지나길 기다린다', e: { friend: -6, flag: 'fightWait' }, msg: '조금 어색한 날이 이어졌어요.' },
+      { t: '다른 친구에게 고민을 털어놓는다', e: { friend: -2, life: { happy: 2 } }, msg: '이야기하니 마음이 조금 풀렸어요.' },
+    ] },
+  { id: 'reconcile', icon: '🤝', title: '{friend}가 먼저 말을 걸어 왔어요', w: 8,
+    cond: s => s.flags.fightWait,
+    choices: [
+      { t: '반갑게 화해한다', e: { friend: 12, life: { social: 2, happy: 2 }, flag: 'fightOk' }, msg: '다시 예전처럼 친해졌어요.' },
+    ] },
+  { id: 'transfer', icon: '🚚', title: '{friend}가 전학을 가게 됐어요', w: 2, once: true, useBf: true,
+    cond: s => s.age >= 10 && s.age <= 13,
+    choices: [
+      { t: '편지를 써서 준다', e: { st: { care: 2 }, friend: 5, flag: 'letter' }, msg: '편지에 주소를 적어 줬어요. 나중에 다시 만날 수도 있어요.' },
+      { t: '아쉽지만 인사만 한다', e: { life: { happy: -2 } }, msg: '마음이 조금 허전했어요.' },
+    ] },
+  { id: 'friendDream', icon: '💬', title: '{friend}가 {friendDream}이(가) 되고 싶대요', w: 3,
+    cond: s => s.age >= 12,
+    choices: [
+      { t: '진심으로 응원한다', e: { friend: 6, st: { care: 2 } }, msg: '{friend}가 고맙다고 했어요.' },
+      { t: '그 직업을 같이 알아본다', e: { friend: 4, action: 'discoverFriendDream' }, msg: '{friendDream}에 대해 새로 알게 됐어요.' },
+    ] },
+  { id: 'contest', icon: '🏅', title: '교내 대회가 열려요! 어디에 나갈까요?', w: 3,
+    cond: s => s.age >= 9,
+    choices: [
+      { t: '과학 탐구 대회', dice: { stat: 'inquiry', target: 5, kind: 'contest' } },
+      { t: '그리기·글짓기 대회', dice: { stat: 'creative', target: 5, kind: 'contest' } },
+      { t: '달리기 대회', dice: { stat: 'body', target: 5, kind: 'contest' } },
+    ] },
+  { id: 'election', icon: '🗳️', title: '반장 선거가 열려요', w: 3, max: 2,
+    cond: s => s.age >= 10,
+    choices: [
+      { t: '출마한다', dice: { stat: 'lead', target: 5, kind: 'speech' } },
+      { t: '친구를 도와 선거 운동을 한다', e: { st: { care: 2, lead: 1 }, friend: 5 }, msg: '친구가 당선되어 함께 기뻐했어요.' },
+    ] },
+  { id: 'youthTeam', icon: '⚽', title: '유소년팀 선발 테스트가 열려요!', w: 9, once: true,
+    cond: s => s.dream === 'athlete' && s.age >= 11 && s.age <= 13,
+    choices: [
+      { t: '테스트에 도전한다', dice: { stat: 'body', target: 5, kind: 'contest', winFlag: 'youthTeam', log: '유소년팀 선발 통과' } },
+      { t: '1년 더 실력을 쌓는다', e: { st: { body: 3 } }, msg: '내년을 위해 열심히 연습했어요.' },
+    ] },
+  // 이어지는 이야기 2: 유소년팀 → 첫 경기 → 슬럼프 또는 주장
+  { id: 'youthMatch', icon: '🏟️', title: '유소년팀 첫 공식 경기! 감독님이 교체 선수로 넣어 주셨어요', w: 9, once: true,
+    cond: s => s.flags.youthTeam && s.age >= 12,
+    choices: [
+      { t: '자신 있게 슛을 노린다', dice: { stat: 'body', target: 5, kind: 'contest', winFlag: 'firstGoal', log: '유소년팀 첫 골' } },
+      { t: '동료에게 좋은 패스를 한다', e: { st: { lead: 3, care: 2 }, flag: 'teamPlayer' }, msg: '내 패스로 동료가 골을 넣었어요. 감독님이 팀워크를 칭찬하셨어요.' },
+    ] },
+  { id: 'captain', icon: '🧢', title: '감독님이 팀 주장을 맡아 보라고 하세요', w: 9, once: true,
+    cond: s => (s.flags.firstGoal || s.flags.teamPlayer) && s.age >= 15,
+    choices: [
+      { t: '주장을 맡는다', e: { st: { lead: 5 }, life: { happy: -1 }, flag: 'captain' }, msg: '주장이 되니 팀 전체를 살피게 됐어요.' },
+      { t: '실력을 더 쌓고 싶다고 말씀드린다', e: { st: { body: 4 } }, msg: '감독님이 내 마음을 이해해 주셨어요.' },
+    ] },
+  { id: 'proTrainee', icon: '🎮', title: '아마추어 e스포츠 대회가 열려요', w: 9, once: true,
+    cond: s => s.dream === 'gamer' && s.age >= 14,
+    choices: [
+      { t: '팀을 꾸려 출전한다', dice: { stat: 'inquiry', target: 5, kind: 'contest', winFlag: 'amateurWin', log: '아마추어 e스포츠 대회 입상' } },
+      { t: '이번엔 구경하며 분석한다', e: { st: { inquiry: 3, detail: 2 } }, msg: '프로 선수들의 전략을 공책에 정리했어요.' },
+    ] },
+  { id: 'dreamCamp', icon: '⛺', title: '{dream} 체험 캠프 참가자를 모집해요', w: 4, max: 2,
+    cond: s => !!s.dream && s.age >= 11,
+    choices: [
+      { t: '참가 신청을 한다', e: { dream: 5, life: { happy: 2 } }, msg: '꿈에 한 걸음 가까워진 느낌이에요.' },
+      { t: '이번엔 쉬어 간다', e: { life: { health: 2 } }, msg: '다음 기회를 기다려요.' },
+    ] },
+  { id: 'mentorTeacher', icon: '🧑‍🏫', title: '담임 선생님이 내 꿈을 물어보셨어요', w: 3, once: true,
+    cond: s => !!s.dream && s.age >= 11,
+    choices: [
+      { t: '솔직하게 꿈을 이야기한다', e: { dream: 3, life: { happy: 3, social: 2 } }, msg: '선생님이 꼭 이룰 수 있을 거라고 응원해 주셨어요.' },
+      { t: '아직 잘 모르겠다고 한다', e: { life: { happy: 1 } }, msg: '선생님이 천천히 찾아도 된다고 하셨어요.' },
+    ] },
+  { id: 'slump', icon: '🌧️', title: '요즘 아무것도 하기 싫어요', w: 2,
+    cond: s => s.age >= 12,
+    choices: [
+      { t: '쉬어 간다', e: { life: { health: 5, happy: 5 } }, msg: '쉬고 나니 다시 힘이 났어요.' },
+      { t: '가족이나 선생님과 이야기한다', e: { life: { social: 3, happy: 4 } }, msg: '이야기하니 마음이 가벼워졌어요.' },
+      { t: '억지로라도 계속한다', e: { st: { detail: 2 }, life: { happy: -4 } }, msg: '해내긴 했지만 많이 지쳤어요.' },
+    ] },
+  { id: 'injury', icon: '🩹', title: '운동하다가 발목을 다쳤어요', w: 4, once: true,
+    cond: s => (s.counts.sport || 0) + (s.counts.run || 0) >= 5,
+    choices: [
+      { t: '푹 쉬며 낫게 한다', e: { life: { health: 5 }, st: { body: -2 } }, msg: '완전히 나았어요.' },
+      { t: '재활 운동을 꼼꼼히 한다', e: { st: { detail: 2, body: 1 } }, msg: '몸을 관리하는 법을 배웠어요.' },
+      { t: '참고 계속 운동한다', e: { life: { health: -8 }, st: { body: 2 } }, msg: '발목이 더 아파졌어요. 몸 관리도 실력이에요.' },
+    ] },
+  { id: 'lateGame', icon: '🌙', title: '밤늦게까지 게임을 하고 싶어요', w: 5,
+    cond: s => (s.counts.game || 0) >= 3 && s.age >= 11,
+    choices: [
+      { t: '약속한 시간이 됐으니 그만한다', e: { st: { detail: 2 }, life: { health: 2 } }, msg: '스스로 약속을 지켜서 뿌듯했어요.' },
+      { t: '한 판만 더 한다', e: { st: { inquiry: 1 }, life: { happy: 3, health: -5 } }, msg: '다음 날 아침에 너무 졸렸어요.' },
+      { t: '프로게이머처럼 연습 계획을 세운다', req: s => s.dream === 'gamer', reqText: '꿈이 프로게이머일 때', e: { st: { inquiry: 3, detail: 2 } }, msg: '연습 시간과 쉬는 시간을 나눠 계획표를 만들었어요.' },
+    ] },
+  { id: 'phone', icon: '📱', title: '스마트폰을 너무 오래 봤어요', w: 2,
+    cond: s => s.age >= 11,
+    choices: [
+      { t: '사용 시간을 정한다', e: { st: { detail: 3 }, life: { health: 2 } }, msg: '시간을 정하니 다른 일을 할 여유가 생겼어요.' },
+      { t: '그냥 계속 본다', e: { life: { happy: 2, health: -4 } }, msg: '눈이 뻑뻑해졌어요.' },
+    ] },
+  { id: 'sibling', icon: '👶', title: '동생이 태어났어요!', w: 2, once: true,
+    cond: s => s.age <= 12,
+    choices: [
+      { t: '동생 돌보기를 돕는다', e: { st: { care: 4 }, life: { happy: 2 } }, msg: '동생이 나를 보고 웃었어요.' },
+      { t: '동생에게 노래를 불러 준다', e: { st: { creative: 2, care: 2 } }, msg: '동생이 내 노래를 좋아해요.' },
+    ] },
+  { id: 'trip', icon: '🧳', title: '가족 여행을 떠나요', w: 2,
+    cond: s => true,
+    choices: [
+      { t: '바다로 간다', e: { life: { happy: 5, health: 2 } }, msg: '가족과 바닷가에서 신나게 놀았어요.' },
+      { t: '역사 유적지로 간다', e: { st: { inquiry: 3 }, life: { happy: 3 } }, msg: '해설사 선생님의 이야기가 재미있었어요.' },
+    ] },
+  { id: 'holiday', icon: '🌕', title: '명절에 친척들이 모였어요', w: 2,
+    cond: s => true,
+    choices: [
+      { t: '사촌들과 논다', e: { life: { social: 3, happy: 3 } }, msg: '사촌들과 윷놀이를 했어요.' },
+      { t: '할아버지께 옛날 이야기를 듣는다', e: { st: { inquiry: 2, care: 2 } }, msg: '할아버지가 어릴 때 하셨던 일을 알게 됐어요.' },
+      { t: '음식 준비를 돕는다', e: { st: { creative: 2, care: 2 } }, msg: '송편을 예쁘게 빚었어요.' },
+    ] },
+  { id: 'pet', icon: '🐶', title: '동물보호센터에서 입양을 기다리는 강아지를 만났어요', w: 2, once: true,
+    cond: s => s.age >= 8 && s.age <= 16,
+    choices: [
+      { t: '가족과 상의해 입양한다', e: { st: { care: 3 }, life: { happy: 5, money: -5 }, action: 'adoptPet' }, msg: '새 가족이 생겼어요! 이제 "반려동물 산책" 활동을 할 수 있어요.' },
+      { t: '돌볼 준비가 될 때까지 기다린다', e: { st: { detail: 1 } }, msg: '반려동물은 책임이 필요하다는 걸 알았어요.' },
+    ] },
+  { id: 'festival', icon: '🎪', title: '동네 축제에서 자원봉사자를 모집해요', w: 2,
+    cond: s => s.age >= 12,
+    choices: [
+      { t: '안내 봉사를 한다', e: { st: { care: 3, lead: 2 } }, msg: '길을 묻는 분들께 친절하게 알려 드렸어요.' },
+      { t: '구경하며 즐긴다', e: { life: { happy: 4 } }, msg: '맛있는 것도 먹고 공연도 봤어요.' },
+    ] },
+  { id: 'exam', icon: '📝', title: '기말고사가 다가와요', w: 3,
+    cond: s => s.age >= 14,
+    choices: [
+      { t: '계획을 세워 꾸준히 공부한다', e: { st: { detail: 3, inquiry: 2 }, life: { happy: -2 } }, msg: '계획대로 공부하니 마음이 편했어요.' },
+      { t: '시험 전날 몰아서 한다', dice: { stat: 'inquiry', target: 5, kind: 'exam' } },
+    ] },
+  { id: 'clubPick', icon: '🎒', title: '중학교 동아리를 골라요', w: 9, once: true,
+    cond: s => s.age === 14,
+    choices: [
+      { t: '체육 동아리', e: { st: { body: 4 } }, msg: '매일 운동장을 누볐어요.' },
+      { t: '과학 동아리', e: { st: { inquiry: 4 } }, msg: '실험실이 내 아지트가 됐어요.' },
+      { t: '미술·방송 동아리', e: { st: { creative: 4 } }, msg: '학교 축제 영상을 만들었어요.' },
+      { t: '봉사 동아리', e: { st: { care: 4 } }, msg: '요양원에서 어르신들과 이야기했어요.' },
+    ] },
+  { id: 'counsel', icon: '🧭', title: '진로 상담 시간이에요', w: 3, once: true,
+    cond: s => s.age >= 15,
+    choices: [
+      { t: '흥미 검사를 받아 본다', e: { action: 'interestTest' } },
+      { t: '나중에 받는다', e: {}, msg: '다음 기회에 받기로 했어요.' },
+    ] },
+  { id: 'aiNews', icon: '📰', title: '뉴스: AI가 일하는 방식을 바꾸고 있대요', w: 3, once: true,
+    cond: s => s.age >= 13,
+    choices: [
+      { t: 'AI를 직접 써 보며 배운다', e: { st: { inquiry: 3 }, discover: 'ai', flag: 'learnAI' }, msg: 'AI를 잘 쓰는 것도 능력이라는 걸 알았어요.' },
+      { t: 'AI가 못 하는 일을 생각해 본다', e: { st: { care: 2, creative: 2 } }, msg: '사람의 마음을 살피는 일은 사람이 더 잘한대요.' },
+    ] },
+  { id: 'cookShow', icon: '🍱', title: '학교 요리 대회에서 음식 꾸미기 상이 생겼대요', w: 3, once: true,
+    cond: s => (s.counts.cook || 0) >= 3,
+    choices: [
+      { t: '예쁘게 꾸미기에 도전한다', e: { st: { creative: 3, detail: 2 }, discover: 'foodstylist' }, msg: '음식을 꾸미는 직업인 푸드스타일리스트를 알게 됐어요.' },
+      { t: '맛에 집중한다', e: { st: { creative: 2, body: 1 } }, msg: '친구들이 맛있다고 엄지를 들었어요.' },
+    ] },
+  // 천재 전용
+  { id: 'geniusAcademy', icon: '🎓', title: '선생님이 영재교육원을 추천하셨어요', w: 9, once: true,
+    cond: s => s.genius && s.age >= 9 && s.age <= 13,
+    choices: [
+      { t: '영재교육원에 다닌다', e: { talent: 8, life: { happy: -2 } }, msg: '나와 비슷한 친구들을 만나 자극을 받았어요.' },
+      { t: '지금처럼 즐겁게 배운다', e: { talent: 3, life: { happy: 4 } }, msg: '좋아하는 걸 즐기는 것도 중요해요.' },
+    ] },
+  { id: 'geniusPressure', icon: '🎈', title: '주변의 기대가 조금 부담돼요', w: 9, once: true,
+    cond: s => s.genius && s.age >= 12,
+    choices: [
+      { t: '부모님께 솔직하게 말한다', e: { life: { happy: 5, social: 2 } }, msg: '부모님이 결과보다 내가 행복한 게 더 중요하대요.' },
+      { t: '기대에 맞추려고 더 노력한다', e: { talent: 4, life: { happy: -5 } }, msg: '실력은 늘었지만 마음이 지쳤어요.' },
+    ] },
+  { id: 'news', icon: '📸', title: '"신동" 기사가 신문에 실렸어요', w: 9, once: true,
+    cond: s => s.genius && s.talentFound && s.age >= 10,
+    choices: [
+      { t: '친구들에게 자랑한다', e: { life: { happy: 3, social: -1 } }, msg: '몇몇 친구는 조금 서운해했어요.' },
+      { t: '평소처럼 지낸다', e: { life: { social: 2 }, st: { care: 1 } }, msg: '친구들이 변함없는 나를 좋아해요.' },
+    ] },
+];
