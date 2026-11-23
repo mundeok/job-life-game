@@ -351,3 +351,22 @@ h3 { font-size: 20px; }
 @media (prefers-reduced-motion: reduce) {
   .feed .entry.new p, .luck-card.back, .flash, .flash > div { animation: none; }
 }
+
+/* 내 지갑 */
+.wallet .wrow { display: flex; justify-content: space-between; gap: 8px; font-size: 15px; padding: 3px 0; font-variant-numeric: tabular-nums; }
+.wallet .wrow b { font-weight: 700; }
+.wallet .wrow em { font-style: normal; font-size: 12px; margin-left: 4px; }
+.wallet .wrow em.up { color: var(--good); }
+.wallet .wrow em.down { color: var(--bad); }
+.wallet .wrow.total { border-top: 1px dashed var(--line); margin-top: 4px; padding-top: 6px; }
+.wallet .wrow.total b { color: var(--brand); }
+.wallet .goal { margin-top: 8px; }
+.wallet .goal small { font-size: 13px; color: var(--ink-soft); }
+.wallet .goal .progress { background: var(--bg); }
+.money-bars { display: grid; gap: 8px; margin: 8px 0; }
+.money-bars .mb { display: grid; grid-template-columns: 140px 1fr 110px; gap: 8px; align-items: center; font-size: 15px; font-variant-numeric: tabular-nums; }
+.money-bars .bar { height: 12px; border-radius: 6px; background: var(--line); overflow: hidden; }
+.money-bars .bar b { display: block; height: 100%; background: var(--accent); }
+.money-bars .mb.total .bar b { background: var(--brand); }
+.money-bars .mb span:last-child { text-align: right; }
+@media (max-width: 560px) { .money-bars .mb { grid-template-columns: 1fr 90px; } .money-bars .bar { grid-column: 1 / -1; grid-row: 2; } }

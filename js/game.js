@@ -1,7 +1,7 @@
 // 직업 인생게임 - 성장기 시제품 (8~19살, 한 학기 = 1턴, 24턴)
 'use strict';
 
-const SAVE_KEY = 'jlg_save_v2';
+const SAVE_KEY = 'jlg_save_v3';
 const BOOK_KEY = 'jlg_book_v1';
 const TURNS = 24;
 const HAND = 6;          // 학기마다 받는 활동 카드 수
@@ -67,8 +67,30 @@ function fill(text, ctx) {
     .replace(/\{friendDream\}/g, f ? job(f.dream).name : '')
     .replace(/\{dream\}/g, S.dream ? job(S.dream).name : '꿈')
     .replace(/\{pet\}/g, S.pet || '반려동물')
-    .replace(/\{job\}/g, ctx.job ? job(ctx.job).name : '');
+    .replace(/\{job\}/g, ctx.job ? job(ctx.job).name : '')
+    .replace(/\{item\}/g, S.cur && S.cur.item ? `${S.cur.itemIcon} ${S.cur.item}` : '')
+    .replace(/\{price\}/g, S.cur && S.cur.itemPrice ? won(S.cur.itemPrice) : '')
+    .replace(/\{goal\}/g, S.goal ? `${S.goal.icon} ${S.goal.name}` : '');
 }
+// 금액을 "12만 6천 원"처럼 읽기 쉽게
+function won(n) {
+  n = Math.round(n || 0);
+  if (n === 0) return '0원';
+  const neg = n < 0; n = Math.abs(n);
+  const man = Math.floor(n / 10000), rest = n % 10000;
+  let s = man ? `${man.toLocaleString('ko-KR')}만` : '';
+  const ch = Math.floor(rest / 1000), r = rest % 1000;
+  if (ch) s += `${s ? ' ' : ''}${ch}천`;
+  if (r) s += `${s ? ' ' : ''}${r}`;
+  return `${neg ? '-' : ''}${s} 원`;
+}
+function allowanceOf(age) { return (ALLOWANCE.find(a => age <= a.maxAge) || ALLOWANCE[ALLOWANCE.length - 1]).monthly; }
+function addCash(v) {
+  if (!v) return;
+  S.wallet.cash = Math.max(0, S.wallet.cash + v);
+  if (S.rep) S.rep.cash = (S.rep.cash || 0) + v;
+}
+function netWorth() { return S.wallet.cash + S.wallet.savings - (S.wallet.debt || 0); }
 function discover(id) {
   if (!id) return false;
   const isNew = !B.jobs[id];
@@ -110,6 +132,11 @@ function addStat(stat, v, extra = 1) {
 }
 function addLife(k, v) {
   if (!v) return;
+  if (k === 'money') {
+    const amt = v * LIFE_MONEY_WON;
+    if (amt > 0) S.wallet.gifts += amt; else S.wallet.spent += -amt;
+    addCash(amt); return;
+  }
   if (k === 'happy' && v < 0 && hasCard('funny')) v = Math.ceil(v / 2);
   const before = S.life[k];
   S.life[k] = clamp(before + v, 0, k === 'money' ? 999 : 100);
@@ -150,7 +177,7 @@ function newGame(setup) {
   const rare = Math.random() < 0.25;
   const fam = pick(FAMILIES.filter(f => !!f.rare === rare));
   const stats = {}; STATS.forEach(x => stats[x.id] = 8 + rnd(4));
-  const life = { health: 70, happy: 65, social: 50, money: 10 };
+  const life = { health: 70, happy: 65, social: 50 };
   for (const k in region.bonus) stats[k] += region.bonus[k];
   for (const k in fam.bonus) (k in stats ? stats : life)[k] += fam.bonus[k];
   if (genius) stats[talent] += 15;
@@ -166,6 +193,8 @@ function newGame(setup) {
     flags: {}, seen: {}, lastEvent: null, lastThought: -99, pet: null, capsule: null,
     luckTickets: 0, legend: false, fights: 0, fightsOk: 0,
     happySum: 0, healthSum: 0, log: [], feed: [], hand: null, kept: null, lastRep: null,
+    wallet: { cash: 0, savings: 0, debt: 0, received: 0, spent: 0, donated: 0, interest: 0, gifts: 0 },
+    goal: null, purchases: [], donations: 0, budgetTurn: false,
     rep: null, cur: null, phase: 'birth',
   };
   S.log.push({ age: 8, t: `${region.icon} ${region.name}에서 태어남 · ${fam.name}` });
@@ -295,6 +324,18 @@ function feedPanel() {
       ${it.lines.map((l, k) => `<p style="animation-delay:${i === last && UI.freshFeed ? k * 0.35 : 0}s">${l}</p>`).join('')}</div>`).join('')}</section>`;
 }
 
+function walletCard() {
+  const w = S.wallet, d = (S.lastRep && S.lastRep.cash) || 0;
+  const g = S.goal, have = w.cash + w.savings;
+  return `<div class="card wallet"><h3>💰 내 지갑</h3>
+    <div class="wrow"><span>현금 ${S.flags.bank ? '' : '(저금통)'}</span><b>${won(w.cash)}${d ? `<em class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : ''}${won(d)}</em>` : ''}</b></div>
+    <div class="wrow"><span>통장</span><b>${S.flags.bank ? won(w.savings) : '아직 없음'}</b></div>
+    <div class="wrow"><span>빚</span><b>${w.debt ? won(w.debt) : '없음'}</b></div>
+    <div class="wrow total"><span>모은 돈 (순자산)</span><b>${won(netWorth())}</b></div>
+    ${g ? `<div class="goal"><small>🎯 저축 목표: ${g.icon} ${g.name} ${won(g.price)}</small><div class="progress"><b style="width:${Math.min(100, Math.round(have / g.price * 100))}%"></b></div></div>` : ''}
+  </div>`;
+}
+
 function sidePanel() {
   const combos = COMBOS.filter(c => hasCombo(c.a, c.b));
   const ld = (S.lastRep && S.lastRep.life) || {};
@@ -310,7 +351,8 @@ function sidePanel() {
   }
   return `<aside class="side">
     <div class="card"><div class="hex-wrap">${hexSvg(S.stats)}</div></div>
-    <div class="card"><div class="lifebars">${LIFE.map(l => {
+    ${walletCard()}
+    <div class="card"><div class="lifebars">${LIFE.filter(l => l.id !== 'money').map(l => {
       const v = S.life[l.id], w = l.id === 'money' ? Math.min(100, v) : v, dd = ld[l.id];
       return `<div class="lifebar ${l.id !== 'money' && v < 30 ? 'low' : ''}"><span>${l.icon} ${l.name}</span><span class="bar"><b style="width:${w}%"></b></span><span>${v}${dd ? `<em class="${dd > 0 ? 'up' : 'down'}">${dd > 0 ? '+' : ''}${dd}</em>` : ''}</span></div>`;
     }).join('')}</div></div>
@@ -438,6 +480,7 @@ function cardView(c, j) {
   if (d.special === 'jobTour') ef.unshift('📘 직업 체험');
   if (d.special === 'dreamBoost' || d.special === 'dreamBig') ef.unshift('🎯 꿈 능력치');
   if (d.special === 'topStat5') ef.unshift('⬆️ 가장 높은 능력치');
+  if (d.budget) ef.push('💰 용돈 덜 쓰기');
   const dreamy = j && d.st && (d.st[j.main] || d.st[j.sub]);
   const tag = c.kept ? '📌 남겨 둔 카드' : c.type === 'lim' ? d.tag : (c.dream ? '⭐ 꿈 카드' : '');
   const name = d.friend ? `${S.friends[c.friend].name}와(과) 놀기` : d.name;
@@ -542,6 +585,7 @@ function runPlan() {
     if (d.special === 'dreamBoost') applyEff({ dream: 4 });
     if (d.special === 'dreamBig') applyEff({ dream: 7 });
     if (d.special === 'topStat5') addStat(topStat(), 5);
+    if (d.budget) S.budgetTurn = true;
     S.counts[c.id] = (S.counts[c.id] || 0) + 1;
     const ms = mainStatOf(d); if (ms) S.recent.push(ms);
     if (isAct) actIds.push(c.id);
@@ -594,6 +638,11 @@ function pickEvent() {
   S.seen[ev.id] = (S.seen[ev.id] || 0) + 1;
   S.lastEvent = ev.id;
   if (ev.id === 'fight') S.fights++;
+  if (ev.id === 'wantItem') {
+    const age2 = ageOf(S.turn);
+    const it = pick(WANT_ITEMS.filter(x => age2 >= x.minAge && age2 <= x.maxAge && !S.purchases.includes(x.name)).concat([]) || WANT_ITEMS) || WANT_ITEMS[0];
+    Object.assign(S.cur, { item: it.name, itemIcon: it.icon, itemPrice: it.price });
+  }
   if (ev.id === 'transfer') S.friends[friend].moved = true;
   S.phase = 'event'; save(); render();
 }
@@ -649,8 +698,36 @@ function choose(i) {
   if (act === 'adoptPet') { S.pet = pick(['콩이', '보리', '두부', '초코', '하루']); note(`🐶 ${S.pet}이(가) 새 가족이 됐어요! 이제 산책 카드가 나와요.`); S.log.push({ age: ageOf(S.turn), t: `🐶 반려동물 ${S.pet} 입양` }); discover('vet'); }
   if (act === 'discoverFriendDream') discover(S.friends[S.cur.friend].dream);
   if (act === 'interestTest') interestTest();
+  moneyAction(act);
   if (act === 'suggestDream') { S.cur = { reason: `${job(c.sug).name}에 대해 알아봤어요. 꿈을 바꿔 볼까요? 지금 꿈을 유지해도 괜찮아요.`, optional: true }; UI.dreamSel = c.sug; S.phase = 'dream'; S.afterDream = 'end'; save(); render(); return; }
   endTurn();
+}
+
+// 돈 이벤트의 선택 처리
+function moneyAction(act) {
+  if (!act) return;
+  const w = S.wallet, c = S.cur || {};
+  const buy = (name, icon, price, fromSavings) => {
+    let left = price;
+    const fromCash = Math.min(w.cash, left); w.cash -= fromCash; left -= fromCash;
+    if (fromSavings && left > 0) { w.savings -= left; left = 0; }
+    w.spent += price; S.purchases.push(name);
+    if (S.rep) S.rep.cash = (S.rep.cash || 0) - price;
+    addLife('happy', 5);
+    S.rep.msgs.push(`${icon} ${won(price)}을 내고 ${name}을(를) 샀다.`);
+    S.log.push({ age: ageOf(S.turn), t: `${icon} ${name} 구입 (${won(price)})` });
+  };
+  if (act === 'buyItem') buy(c.item, c.itemIcon, c.itemPrice, false);
+  if (act === 'setGoal') { S.goal = { name: c.item, icon: c.itemIcon, price: c.itemPrice }; S.rep.msgs.push(`🎯 ${c.itemIcon} ${c.item}을(를) 저축 목표로 정했다. ${won(c.itemPrice)}을 모아 보자!`); }
+  if (act === 'buyGoal' && S.goal) { buy(S.goal.name, S.goal.icon, S.goal.price, true); S.flags.goalGetter = true; note(`🎯 저축 목표 "${S.goal.name}"을(를) 이뤘어요!`); S.goal = null; }
+  if (act === 'dropGoal') S.goal = null;
+  if (act === 'bankAll') { w.savings += w.cash; S.rep.msgs.push(`🏦 저금통의 ${won(w.cash)}을 통장에 넣었다.`); w.cash = 0; }
+  if (act === 'bankHalf') { const h = Math.round(w.cash / 2 / 1000) * 1000; w.savings += h; w.cash -= h; S.rep.msgs.push(`🏦 ${won(h)}을 통장에 넣었다.`); }
+  if (act === 'donate10' || act === 'donate5') {
+    const amt = act === 'donate10' ? 10000 : 5000;
+    w.cash -= amt; w.donated += amt; S.donations++;
+    if (S.rep) S.rep.cash = (S.rep.cash || 0) - amt;
+  }
 }
 
 function interestTest() {
@@ -731,7 +808,18 @@ function setDream(id, why) {
 
 function endTurn() {
   const age = ageOf(S.turn);
-  addLife('money', 2);
+  // 용돈: 한 학기(6개월) 용돈을 받고, 정해진 비율만큼은 간식·준비물로 저절로 쓴다
+  const got = allowanceOf(age) * 6;
+  const used = Math.round(got * (S.budgetTurn ? SPEND_RATE_BUDGET : SPEND_RATE) / 1000) * 1000;
+  S.wallet.received += got; S.wallet.spent += used;
+  addCash(got - used);
+  S.rep.stories.push(`💰 용돈 ${won(got)}을 받아 ${won(used)}을 썼다.${S.budgetTurn ? ' 용돈기입장 덕분에 덜 썼다.' : ''}`);
+  S.budgetTurn = false;
+  // 통장 이자는 1년(2학기)마다
+  if (S.flags.bank && semOf(S.turn) === 2 && S.wallet.savings > 0) {
+    const it = Math.round(S.wallet.savings * BANK_RATE / 10) * 10;
+    if (it > 0) { S.wallet.savings += it; S.wallet.interest += it; S.rep.stories.push(`🏦 통장에 이자 ${won(it)}이 붙었다.`); }
+  }
   addLife('health', -1);
   addLife('happy', -2);
   if (!S.rep.socialUp && !hasCombo('active', 'warm')) addLife('social', -2);
@@ -762,7 +850,7 @@ function endTurn() {
   const big = S.rep.notes.filter(n => /달성|새 성격 카드|조합|꿈이 바뀌|새 가족/.test(n)).map(n => fill(n));
   S.feed.push({ age, sem: semOf(S.turn), label: `${semOf(S.turn)}학기`, lines: [...S.rep.stories, ...S.rep.msgs, ...big] });
   S.feed = S.feed.slice(-60);
-  S.lastRep = { st: S.rep.st, life: S.rep.life, notes: S.rep.notes.filter(n => !big.includes(fill(n))) };
+  S.lastRep = { st: S.rep.st, life: S.rep.life, cash: S.rep.cash || 0, notes: S.rep.notes.filter(n => !big.includes(fill(n))) };
   UI.freshFeed = true;
   S.cur = null;
   if (LUCK_AT[S.turn]) { S.log.push({ age, t: `🎓 ${LUCK_AT[S.turn]}` }); startLuck(LUCK_AT[S.turn]); return; }
@@ -793,7 +881,7 @@ function drawLuck(ticket) {
   else if (card.special === 'awaken') { S.talentFound = true; addStat(S.talent, 12); effText = `${statName(S.talent)} 재능이 활짝!`; }
   else if (card.special === 'world') { addStat(topStat(), 10); addLife('happy', 10); effText = '최고의 경험을 했어요!'; }
   else applyEff(card);
-  if (!effText) effText = [...Object.keys(card.st || {}).map(k => `${statName(k)} +${card.st[k]}`), ...Object.keys(card.life || {}).map(k => `${statName(k)} +${card.life[k]}`)].join(', ');
+  if (!effText) effText = [...Object.keys(card.st || {}).map(k => `${statName(k)} +${card.st[k]}`), ...Object.keys(card.life || {}).map(k => k === 'money' ? `용돈 ${won(card.life[k] * LIFE_MONEY_WON)}` : `${statName(k)} +${card.life[k]}`)].join(', ');
   if (grade === 'legend') { S.legend = true; S.log.push({ age: ageOf(Math.max(0, S.turn)), t: `🌟 전설 행운 카드 "${card.name}"` }); }
   S.rep = keep;
   S.cur.result = { grade, icon: card.icon, name: card.name, effText };
@@ -830,7 +918,9 @@ function finish() {
   if (S.fights > 0 && S.fightsOk >= S.fights) give('peace');
   if (S.happySum / TURNS >= 70) give('smile');
   if (S.healthSum / TURNS >= 70) give('strong');
-  if (S.life.money >= 80) give('saver');
+  if (netWorth() >= 1000000) give('saver');
+  if (S.flags.goalGetter) give('goalGetter');
+  if (S.donations >= 3) give('giver');
   if (S.pet) give('petLover');
   if (B.quiz >= 10) give('quizKing');
   if (S.legend) give('lucky');
@@ -838,6 +928,19 @@ function finish() {
   S.titles = got;
   got.forEach(id => B.titles[id] = true); saveBook();
   S.phase = 'end'; save(); render();
+}
+
+function moneyEndCard() {
+  const w = S.wallet;
+  const rows = [
+    ['받은 용돈', w.received], ['선물·상금으로 받은 돈', w.gifts], ['통장 이자', w.interest],
+    ['쓴 돈', w.spent], ['나눈 돈 (기부)', w.donated], ['모은 돈 (순자산)', netWorth()],
+  ];
+  const max = Math.max(1, ...rows.map(r => r[1]));
+  return `<div class="card"><h3>💰 나의 용돈 기록</h3>
+    <div class="money-bars">${rows.map(([n, v], i) => `<div class="mb ${i === 5 ? 'total' : ''}"><span>${n}</span><span class="bar"><b style="width:${Math.round(v / max * 100)}%"></b></span><span>${won(v)}</span></div>`).join('')}</div>
+    <p class="muted" style="font-size:14px">빚: ${w.debt ? won(w.debt) : '없음'}${S.purchases.length ? ` · 산 물건: ${S.purchases.join(', ')}` : ''}</p>
+    <p class="muted" style="font-size:14px">돈은 삶의 지표 중 하나일 뿐이에요. 어떻게 모으고, 쓰고, 나눴는지 돌아보세요.</p></div>`;
 }
 
 function renderEnd() {
@@ -865,7 +968,8 @@ function renderEnd() {
       <div class="card"><h3>💌 10살의 타임캡슐</h3>${S.capsule ? `<div class="letter">미래의 나는 <b>${job(S.capsule.job).name}</b>이(가) 되어 있을 거야.<br>${S.capsule.text ? `"${esc(S.capsule.text)}"` : ''}</div>
         <p class="muted">${dj && S.capsule.job === dj.id ? '10살 때의 꿈을 지금도 이어 가고 있어요!' : '그때와 지금의 꿈을 비교해 보세요.'}</p>` : '<p class="muted">타임캡슐이 없어요.</p>'}
         <h3 style="margin-top:12px">👫 친구들은 어떻게 지낼까?</h3>${S.friends.map(f => `<div style="font-size:15px">${friendLine(f)}</div>`).join('')}</div>
-      <div class="card"><h3>😊 삶의 지표</h3>${LIFE.map(l => `<div>${l.icon} ${l.name}: ${S.life[l.id]}</div>`).join('')}
+      ${moneyEndCard()}
+      <div class="card"><h3>😊 삶의 지표</h3>${LIFE.filter(l => l.id !== 'money').map(l => `<div>${l.icon} ${l.name}: ${S.life[l.id]}</div>`).join('')}
         <h3 style="margin-top:12px">🃏 성격 카드</h3><div class="chips">${S.cards.map(c => `<span class="chip">${CARDS[c].icon} ${CARDS[c].name}</span>`).join('')}</div>
         ${S.talentFound ? `<p>${S.genius ? '💎' : '🌟'} 발견한 재능: ${statName(S.talent)}</p>` : `<p class="muted">숨은 재능(${statName(S.talent)})은 아직 발견하지 못했어요.</p>`}</div>
       <div class="card"><h3>🏅 이번 판 칭호</h3>${S.titles.length ? `<div class="title-list">${S.titles.map(id => { const t = TITLES.find(x => x.id === id); return `<div class="title-item got g-${t.g}"><b>${t.name}${S.newTitles.includes(id) ? ' 🆕' : ''}</b>${t.g} · ${t.hint}</div>`; }).join('')}</div>` : '<p class="muted">이번에는 칭호를 얻지 못했어요. 다른 방법으로 살아 보세요!</p>'}</div>

@@ -255,4 +255,31 @@ const EVENTS = [
       { t: '친구들에게 자랑한다', e: { life: { happy: 3, social: -1 } }, msg: '몇몇 친구는 조금 서운해했어요.' },
       { t: '평소처럼 지낸다', e: { life: { social: 2 }, st: { care: 1 } }, msg: '친구들이 변함없는 나를 좋아해요.' },
     ] },
+  // ---------- 돈 (기획서 12장) ----------
+  { id: 'wantItem', icon: '🛍️', title: '{item}이(가) 너무 갖고 싶어요! 가격은 {price}이에요', w: 4, max: 4,
+    cond: s => s.age >= 8,
+    choices: [
+      { t: '지금 산다', req: s => s.wallet.cash >= (s.cur ? s.cur.itemPrice : 0), reqText: '현금이 모자라요', action: 'buyItem' },
+      { t: '저축 목표로 정하고 모은다', req: s => !s.goal, reqText: '이미 저축 목표가 있어요', action: 'setGoal' },
+      { t: '꼭 필요한지 생각해 보고 참는다', e: { st: { detail: 2 } }, msg: '사고 싶은 마음을 꾹 참았다. 정말 필요한 게 뭔지 생각해 봤다.' },
+    ] },
+  { id: 'bankAccount', icon: '🏦', title: '부모님과 은행에 가서 어린이 통장을 만들었어요', w: 9, once: true,
+    cond: s => s.age >= 9 && s.age <= 11,
+    choices: [
+      { t: '저금통에 모은 돈을 모두 넣는다', action: 'bankAll', e: { st: { detail: 2 }, flag: 'bank' }, msg: '통장에 돈을 넣으면 해마다 이자가 붙는다는 걸 알았다.' },
+      { t: '절반만 넣고 절반은 가지고 있는다', action: 'bankHalf', e: { flag: 'bank' }, msg: '쓸 돈과 모을 돈을 나눠 보기로 했다.' },
+    ] },
+  { id: 'charity', icon: '🎗️', title: '학교에서 이웃 돕기 모금을 해요', w: 2, max: 3,
+    cond: s => s.age >= 10,
+    choices: [
+      { t: '1만 원을 기부한다', req: s => s.wallet.cash >= 10000, reqText: '현금이 모자라요', action: 'donate10', e: { st: { care: 3 } }, msg: '내 용돈이 누군가에게 도움이 된다니 뿌듯했다.' },
+      { t: '5천 원을 기부한다', req: s => s.wallet.cash >= 5000, reqText: '현금이 모자라요', action: 'donate5', e: { st: { care: 2 } }, msg: '작은 돈이지만 마음을 보탰다.' },
+      { t: '이번에는 마음으로 응원한다', e: {}, msg: '다음에는 꼭 함께하기로 했다.' },
+    ] },
+  { id: 'goalReached', icon: '🎯', title: '저축 목표였던 {goal}을(를) 살 만큼 돈이 모였어요!', w: 12,
+    cond: s => !!s.goal && s.wallet.cash + s.wallet.savings >= s.goal.price,
+    choices: [
+      { t: '모은 돈으로 산다', action: 'buyGoal' },
+      { t: '조금 더 모아 두기로 한다', action: 'dropGoal', e: { st: { detail: 2 } }, msg: '다음에 더 필요한 곳에 쓰려고 계속 모으기로 했다.' },
+    ] },
 ];

@@ -235,8 +235,8 @@ const ACTIVITIES = [
     story: ['학급 회의를 진행했다.', '반 친구들의 의견을 모아 선생님께 전했다.'] },
   { id: 'diary', name: '일기 쓰기', icon: '📝', st: { detail: 3, creative: 1 }, life: {},
     story: ['하루도 빠짐없이 일기를 썼다.', '일기장에 꿈에 대한 생각을 적었다.'] },
-  { id: 'budget', name: '용돈기입장 쓰기', icon: '💰', st: { detail: 3 }, life: { money: 3 },
-    story: ['용돈을 아껴 저금통을 채웠다.', '용돈기입장으로 한 달 지출을 정리했다.'] },
+  { id: 'budget', name: '용돈기입장 쓰기', icon: '💰', st: { detail: 3 }, life: {}, budget: true,
+    story: ['용돈기입장을 쓰며 군것질을 줄였다.', '용돈기입장으로 한 달 지출을 정리했다.'] },
   { id: 'tidy', name: '정리정돈', icon: '🧹', st: { detail: 3 }, life: { happy: 1 },
     story: ['책상 서랍을 깔끔하게 정리했다.', '방 청소를 하다가 잃어버린 물건을 찾았다.'] },
   { id: 'study', name: '학원·문제집 공부', icon: '✏️', st: { inquiry: 2, detail: 2 }, life: { happy: -3 },
@@ -350,7 +350,9 @@ const TITLES = [
   { id: 'teacherRespect', name: '존경받는 스승', g: '희귀', hint: '제자가 마지막에 말을 남김' },
   { id: 'smile', name: '웃음 부자', g: '일반', hint: '행복 지표가 계속 높음', proto: true },
   { id: 'strong', name: '튼튼한 몸', g: '일반', hint: '건강 지표가 계속 높음', proto: true },
-  { id: 'saver', name: '알뜰살뜰', g: '일반', hint: '저축을 꾸준히 함', proto: true },
+  { id: 'saver', name: '알뜰살뜰', g: '일반', hint: '19살까지 100만 원 넘게 모음', proto: true },
+  { id: 'goalGetter', name: '목표 달성', g: '일반', hint: '저축 목표를 세우고 모아서 삼', proto: true },
+  { id: 'giver', name: '나눔의 손', g: '일반', hint: '기부를 3번 이상 함', proto: true },
   { id: 'balance', name: '균형의 달인', g: '전설', hint: '삶의 지표 4개가 모두 높음' },
   { id: 'lamp', name: '마을의 등불', g: '일반', hint: '봉사를 많이 함' },
   { id: 'student', name: '평생 학생', g: '일반', hint: '은퇴 후에도 배움을 계속함' },
@@ -369,4 +371,31 @@ const TITLES = [
   { id: 'hometown', name: '고향으로', g: '일반', hint: '은퇴 후 태어난 곳으로 돌아감' },
   { id: 'lucky', name: '행운아', g: '희귀', hint: '행운 카드에서 전설을 뽑음', proto: true },
   { id: 'capsule', name: '타임캡슐의 약속', g: '희귀', hint: '10살에 쓴 편지 속 꿈을 이룸' },
+];
+
+// ---------- 돈 (기획서 12장) ----------
+// 금액은 게임용 대략값이에요. 실제 통계를 확인해 고쳐 쓰세요.
+// 용돈: 나이별 한 달 용돈(원). 한 학기 = 6개월
+const ALLOWANCE = [
+  { maxAge: 10, monthly: 15000 },
+  { maxAge: 13, monthly: 30000 },
+  { maxAge: 16, monthly: 50000 },
+  { maxAge: 19, monthly: 70000 },
+];
+const SPEND_RATE = 0.7;        // 용돈 중 간식·준비물 등으로 저절로 쓰는 비율
+const SPEND_RATE_BUDGET = 0.5; // 용돈기입장을 쓴 학기의 비율
+const BANK_RATE = 0.02;        // 어린이 통장 1년 이자율 (2학기마다 붙어요)
+const LIFE_MONEY_WON = 2000;   // 이벤트의 돈 +1 = 2,000원
+
+// 사고 싶은 물건 (나이에 맞는 것만 나와요)
+const WANT_ITEMS = [
+  { name: '만화책 세트', icon: '📚', price: 30000, minAge: 8, maxAge: 13 },
+  { name: '캐릭터 필통', icon: '✏️', price: 15000, minAge: 8, maxAge: 11 },
+  { name: '조립 블록 세트', icon: '🧱', price: 60000, minAge: 8, maxAge: 12 },
+  { name: '새 운동화', icon: '👟', price: 80000, minAge: 9, maxAge: 19 },
+  { name: '자전거', icon: '🚲', price: 200000, minAge: 9, maxAge: 15 },
+  { name: '게임기', icon: '🎮', price: 350000, minAge: 10, maxAge: 19 },
+  { name: '블루투스 이어폰', icon: '🎧', price: 120000, minAge: 13, maxAge: 19 },
+  { name: '좋아하는 가수 콘서트 표', icon: '🎤', price: 110000, minAge: 14, maxAge: 19 },
+  { name: '태블릿', icon: '📱', price: 500000, minAge: 13, maxAge: 19 },
 ];
